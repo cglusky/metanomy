@@ -1,0 +1,7 @@
+; $Id:$
+name = "ATOM/Common Alert Protocol parser"
+description = "Provides an ATOM/CAP parser for FeedAPI modules. Requires PHP5."
+package = FeedAPI Add On
+dependencies[] = feedapi
+core = 6.x
+php = 5.0
