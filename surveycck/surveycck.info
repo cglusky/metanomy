@@ -1,0 +1,6 @@
+; $Id$
+name =  SurveyCCK
+description = Provides a survey (question/answer) style widget for the text cck field.
+dependencies[] = content
+package = CCK
+core = 6.x

@@ -1,0 +1,214 @@
+<?php
+// $Id $
+
+/**
+ * @file
+ * A field designed for surveys - question and answer type forms
+ * There is support for a widget to enter question and format answer text area
+ * And a themeable formatter to get the question and answer put back together
+ * This was put together from code found in the cck/modules folder
+ * Mostly from text.module with inspiration (and code) from a few others
+ *
+ * @author Coby Leuschke (cglusky)
+ */
+ 
+/**
+ * Implementation of hook_theme().
+ */
+function surveycck_theme() {
+  return array(
+    //Theme for input
+    'surveycck_textarea' => array(
+      'arguments' => array('element' => NULL), 
+      'function' => 'theme_surveycck_textarea',
+      ),
+     //Formatter for output
+     'surveycck_formatter_question_answer' => array(
+        'arguments' => array('element' => NULL),
+      ),
+  ); 
+}
+
+/**
+ * Implementation of hook_field_formatter_info(),.
+ */
+function surveycck_field_formatter_info() {
+  return array(
+    'question_answer' => array(
+      'label' => t('Question and Answer'),
+      'field types' => array('text'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+  );
+}
+
+/**
+ * Theme a text field for questions and answers.
+ * 
+ * @ingroup themeable
+ */
+function theme_surveycck_formatter_question_answer($element) {
+  $output = '';
+  $field = content_fields($element['#field_name'], $element['#type_name']);
+  $question = $field['widget']['question'];
+  $allowed =_text_allowed_values($element) ? $allowed : $element['#item']['safe'];//answer
+  $output = '<div class="field-'.$element['#type_name'].'">'.$question.'<p>'.$allowed.'</p></div>';
+ 
+  return $output;
+}
+
+/**
+ * Implementation of hook_widget_info()
+ * Specifies the label and that it is a widget for the text field type
+ */
+
+function surveycck_widget_info() {
+  return array(
+    'surveycck_textarea' => array(
+      'label' => t('Text Survey Style'),
+      'field types' => array('text'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+      'callbacks' => array(
+        'default value' => CONTENT_CALLBACK_DEFAULT,
+      ),
+    ), 
+  );
+}
+
+/**
+ * Implementation of hook_widget_settings().
+ */
+function surveycck_widget_settings($op, $widget) {
+  switch ($op) {
+    case 'form':
+      $form = array();
+      // Set the default element row and size
+      $rows = (isset($widget['rows']) && is_numeric($widget['rows'])) ? $widget['rows'] : 5;
+      $size = (isset($widget['size']) && is_numeric($widget['size'])) ? $widget['size'] : 60;
+      //What question to ask
+      $form['question'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Enter your question here'),
+        '#default_value' => $widget['question'] ? $widget['question'] : '',
+        '#required' => TRUE,
+      );
+      //How to format the text area for the answer
+      $form['rows'] = array(
+        '#type' => 'textfield',
+        //'#length' = > 2,
+        '#title' => t('Number of rows to show for the answer text area'),
+        '#default_value' => $rows,
+        '#required' => TRUE,
+        '#element_validate' => array('_surveycck_widget_settings_row_validate'),
+      );
+      $form['size'] = array('#type' => 'hidden', '#value' => $size);
+         
+      return $form;
+    
+    case 'save':
+      return array('question', 'rows', 'size');
+  }
+}
+
+// Private validation function stolen from text.module
+function _surveycck_widget_settings_row_validate($element, &$form_state) {
+  $value = $form_state['values']['rows'];
+  if (!is_numeric($value) || intval($value) != $value || $value <= 0) {
+    form_error($element, t('"Rows" must be a positive integer.'));
+  }
+}
+
+/**
+ * Implementation of FAPI hook_elements().
+ *
+ * Any FAPI callbacks needed for individual widgets can be declared here,
+ * and the element will be passed to those callbacks for processing.
+ *
+ * Drupal will automatically theme the element using a theme with
+ * the same name as the hook_elements key.
+ *
+ */
+function surveycck_elements() {
+
+  return array(
+      'surveycck_textarea' => array(
+        '#input' => TRUE,
+        '#columns' => array('value', 'format'), '#delta' => 0,
+        '#process' => array('surveycck_textarea_process'),
+        '#filter_value' => FILTER_FORMAT_DEFAULT,
+      ),
+      
+    );
+}
+
+/**
+ * Implementation of hook_widget().
+ * There is only one type (textarea)  
+ */
+function surveycck_widget(&$form, &$form_state, $field, $items, $delta = 0) {
+   $element = array(
+    '#type' => $field['widget']['type'], //surveycck_textarea
+    '#default_value' => isset($items[$delta]) ? $items[$delta] : NULL,
+  );
+  return $element;
+}
+
+/**
+ * Process an individual element.
+ * Copied whole from text.module, and added our question as the element title
+ *
+ * Build the form element. When creating a form using FAPI #process,
+ * note that $element['#value'] is already set.
+ *
+ * The $fields array is in $form['#field_info'][$element['#field_name']].
+ */
+function surveycck_textarea_process($element, $edit, $form_state, $form) {
+   $field = $form['#field_info'][$element['#field_name']];
+   $field_key   = $element['#columns'][0];
+   $element[$field_key] = array(
+    '#type' => 'textarea',
+    '#default_value' => isset($element['#value'][$field_key]) ? $element['#value'][$field_key] : NULL,
+    '#rows' => !empty($field['widget']['rows']) ? $field['widget']['rows'] : 10,
+    '#weight' => 0,
+    // The following values were set by the content module and need
+    // to be passed down to the nested element.
+    '#title' => $field['widget']['question'],
+    '#description' => $element['#description'],
+    '#required' => $element['#required'],
+    '#field_name' => $element['#field_name'],
+    '#type_name' => $element['#type_name'],
+    '#delta' => $element['#delta'],
+    '#columns' => $element['#columns'],
+    '#question' => !empty($field['widget']['question']) ? $field['widget']['question'] : '',
+  );
+
+  if (!empty($field['text_processing'])) {
+    $filter_key  = (count($element['#columns']) == 2) ? $element['#columns'][1] : 'format';
+    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : FILTER_FORMAT_DEFAULT;
+    $parents = array_merge($element['#parents'] , array($filter_key));
+    $element[$filter_key] = filter_form($format, 1, $parents);
+  }
+
+  // Used so that hook_field('validate') knows where to flag an error.
+  $element['_error_element'] = array(
+    '#type' => 'value',
+    '#value' => implode('][', array_merge($element['#parents'], array($field_key))),
+  );
+ 
+  return $element;
+}
+
+/**
+ * FAPI theme for an individual text elements.
+ *
+ * The surveycck_textarea is already rendered by the
+ * textarea themes and the html output
+ * lives in $element['#children']. Override this theme to
+ * make custom changes to the output FOR THE FORM.
+ *
+ * $element['#field_name'] contains the field name
+ * $element['#delta]  is the position of this element in the group
+ */
+function theme_surveycck_textarea($element) {
+  return $element['#children'];
+}
